@@ -9,6 +9,7 @@ const User = require('./model/user')
 const Transaction = require('./model/transaction')
 const JWT_SECRET = process.env.TOKEN_SECRET || 'SECRET'
 var upload = multer();
+var port = process.env.PORT || 80
 // get config vars
 dotenv.config();
 
@@ -46,7 +47,7 @@ var db = mongoose.connection;
         {
             customer_xid
         },
-        JWT_SECRET,{ expiresIn: '1800s' }
+        JWT_SECRET
     )
 
 let init_bal = 0
@@ -76,6 +77,15 @@ let init_bal = 0
     let date_ob = new Date();
     var find_bal = await db.collection('customer_xid').find({ "customer_xid": customer_xid}).toArray();
     var bal_now =  find_bal[0].balance
+    if(find_bal[0].status == "enabled"){
+        return res.json({
+            "status": "fail",
+            "data": {
+                "error": "Already enabled" 
+            }
+        })
+    }
+    else{
     await User.updateOne({
       status : "enabled"}
     ).where("customer_xid").eq(customer_xid)
@@ -91,6 +101,7 @@ return res.json({
       }
     }
   })
+}
 });
 app.get('/api/v1/wallet', validateToken, async (req, res) => {
     const { customer_xid } = req.user
@@ -170,6 +181,7 @@ app.post('/api/v1/wallet/withdrawals', validateToken, async (req, res) => {
     var amount_now = parseFloat(bal_now)-parseFloat(amount)
     var withdraw_amount = "-"+amount
  /*    console.log(parseFloat(amount)) */
+ if(find_bal[0].status == "enabled" && amount_now>0){
     await User.updateOne({
         balance : amount_now}
       ).where("customer_xid").eq(customer_xid)
@@ -198,7 +210,21 @@ app.post('/api/v1/wallet/withdrawals', validateToken, async (req, res) => {
             "reference_id": reference_id
         }
     }
-    })
+    })}
+    else{
+      return res.json({    "status": "failed",
+      "data": {
+          "withdrawal": {
+              "id": token,
+              "withdrawn_by": customer_xid,
+              "status": "failed",
+              "withdrawn_at": date_ob,
+              "amount": amount,
+              "reference_id": reference_id
+          }
+      }
+      })}
+    
 });
 app.patch('/api/v1/wallet', validateToken, async (req, res) => {
     const { is_disabled } = req.body
@@ -240,7 +266,7 @@ function validateToken(req, res, next) {
         }
     });
 } 
-  app.listen(3000, () => {
-    console.log(`Server up at 3000`)
+  app.listen(port, () => {
+    console.log(`Server up at ${port}`)
   });
   
